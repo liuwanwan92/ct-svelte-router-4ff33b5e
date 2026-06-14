@@ -8,7 +8,7 @@
 
 Svelte Router adds routing to your Svelte apps. It keeps your routes organized in a single place.
 
-With Svelte Router SPA you have all the features you need to create modern web applications with minimal configuration.
+Under the hood it works by registering a **global click handler** that intercepts every same-origin `<a>` click (and a `popstate` handler for back/forward), so plain HTML links work out of the box — you do **not** need a special link component for basic navigation.
 
 It's designed for Single Page Applications (SPA). If you need Server Side Rendering then consider using [Svelte Kit](https://kit.svelte.dev/).
 
@@ -16,742 +16,964 @@ It's designed for Single Page Applications (SPA). If you need Server Side Render
 
 ## Index
 
-* [Features](#features)
-* [Install](#install)
-* [Usage](#usage)
-  * [Layouts and route info](#layouts-and-route-info)
-  * [Anatomy of a route](#anatomy-of-a-route)
-  * [Using named params as first part of path name (not recommended)](#using-named-params-as-first-part-of-path-name-not-recommended)
-* [Route prefix](#route-prefix)
-* [Localisation](#localisation)
-  * [Rendering a page in different languages](#rendering-a-page-in-different-languages)
-* [Google Analytics](#google-analytics)
-* [Not Found - 404](#not-found---404)
-* [API](#api)
-  * [Router](#router)
-  * [Route](#route)
-  * [currentRoute](#currentroute)
-  * [Navigate](#navigate)
-  * [navigateTo](#navigateto)
-  * [routeIsActive](#routeisactive)
-  * [localisedRoute](#localisedroute)
-* [Example of use](#example-of-use)
-* [Credits](#credits)
+- [Features](#features)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Realistic project example](#realistic-project-example)
+  - [Route definitions](#route-definitions)
+  - [App entry](#app-entry)
+  - [Layout components](#layout-components)
+  - [Page components](#page-components)
+- [How route resolution works (the pipeline)](#how-route-resolution-works-the-pipeline)
+- [Navigation: `<a>` vs `<Navigate>` vs `navigateTo`](#navigation-a-vs-navigate-vs-navigateto)
+  - [Plain `<a>` links (global click handler)](#plain-a-links-global-click-handler)
+  - [`<Navigate>` component](#navigate-component)
+  - [`navigateTo()` function](#navigateto-function)
+  - [Comparison table](#comparison-table)
+- [Named params and query strings](#named-params-and-query-strings)
+  - [Named params (`:param`)](#named-params-param)
+  - [Query strings (`?key=value`)](#query-strings-keyvalue)
+  - [Hash / anchors (`#section`)](#hash--anchors-section)
+  - [How params accumulate in nested routes](#how-params-accumulate-in-nested-routes)
+- [Route guards](#route-guards)
+  - [Defining a guard](#defining-a-guard)
+  - [Guard evaluation order](#guard-evaluation-order)
+  - [Guard + redirect interaction](#guard--redirect-interaction)
+  - [Back-button behavior after a guard redirect](#back-button-behavior-after-a-guard-redirect)
+- [Redirects](#redirects)
+  - [Static redirect (`redirectTo`)](#static-redirect-redirectto)
+  - [Guard-based redirect (`onlyIf`)](#guard-based-redirect-onlyif)
+  - [Redirect priority](#redirect-priority)
+  - [Chained redirects](#chained-redirects)
+- [Not Found (404)](#not-found-404)
+  - [Default behavior](#default-404-behavior)
+  - [Custom 404 component](#custom-404-component)
+  - [When does 404 trigger?](#when-does-404-trigger)
+- [Route prefix](#route-prefix)
+  - [How prefix changes URL parsing](#how-prefix-changes-url-parsing)
+  - [Prefix and link interception](#prefix-and-link-interception)
+- [Localisation (i18n)](#localisation-i18n)
+  - [Mode A — no `lang` option (match any language)](#mode-a--no-lang-option-match-any-language)
+  - [Mode B — `lang` option set (match only that language)](#mode-b--lang-option-set-match-only-that-language)
+  - [Mode C — language conversion via `navigateTo` / `<Navigate>`](#mode-c--language-conversion-via-navigateto--navigate)
+  - [Partial localisation](#partial-localisation)
+  - [`defaultLanguage` option](#defaultlanguage-option)
+- [Nested routes and layouts](#nested-routes-and-layouts)
+  - [Rendering priority inside `<Route>`](#rendering-priority-inside-route)
+  - [Auto-index behavior](#auto-index-behavior)
+- [TypeScript reference](#typescript-reference)
+  - [`Route` (route definition)](#route-route-definition)
+  - [`RouterOptions`](#routeroptions)
+  - [`CurrentRoute` (runtime route object)](#currentroute-runtime-route-object)
+  - [`NavigateProps`](#navigateprops)
+  - [Function signatures](#function-signatures)
+  - [`activeRoute` Svelte store](#activeroute-svelte-store)
+- [API quick reference](#api-quick-reference)
+- [Google Analytics](#google-analytics)
+- [Credits](#credits)
+
+---
 
 ## Features
 
-- Define your routes in a single interface
-- Layouts global, per page or nested.
-- Nested routes.
-- Named params.
-- Localisation.
-- Guards to protect urls. Public and private urls.
-- Route prefix.
-- Track pageviews in Google Analytics (optional).
-- Use standard `<a href="/about-us">About</a>` elements to navigate between pages (or use [`<Navigate />`](#navigate) for bonus features).
+- Define your routes in a single file
+- Layouts: global, per page, or nested to any depth
+- Nested routes with automatic index matching
+- Named params (`:id`, `:slug`, etc.) accumulated through nesting
+- Query string and hash preservation
+- Localisation / i18n with per-segment translations
+- Guards (`onlyIf`) for protected routes with redirect on failure
+- Static redirects (`redirectTo`) and chained redirects
+- Route prefix to scope the router under a sub-path
+- Custom or default 404 handling
+- Google Analytics pageview tracking (optional)
+- Works with plain `<a href>` elements **or** the `<Navigate>` component
+- TypeScript type declarations included
 
-Svelte Router is smart enought to inject the corresponding params to each Route component. Every Route component has information about their named params, query params and child route.
-
-You can use all that information (availabe in the currentRoute property) to help you implement your business logic and secure the app.
+---
 
 ## Install
 
-To install Svelte Router on your svelte app:
-
-with npm
-
 ```bash
+# npm
 npm i svelte-router-spa
-```
 
-with Yarn
-
-```bash
+# yarn
 yarn add svelte-router-spa
 ```
 
-## Usage
+Make sure your dev server serves `index.html` for all paths (SPA mode). For the default Svelte setup, add `-s` to sirv:
 
-Ensure your local server is configured in SPA mode. In a default Svelte installation you need to edit your package.json and add _-s_ to `sirv public`.
-
-```javascript
+```json
 "start": "sirv public -s"
 ```
 
-Instead of having your routes spread inside your code Svelte Router SPA lets you define them inside a file where you can easily identify all available routes.
+---
 
-Add a routes.js file with your routes info. Example:
+## Quick start
 
-```javascript
-import Login from './views/public/login.svelte'
-import PublicIndex from './views/public/index.svelte'
-import PublicLayout from './views/public/layout.svelte'
-import AdminLayout from './views/admin/layout.svelte'
-import AdminIndex from './views/admin/index.svelte'
-import EmployeesIndex from './views/admin/employees/index.svelte'
-
-function userIsAdmin() {
-  //check if user is admin and returns true or false
-}
-
-const routes = [
-  {
-    name: '/',
-    component: PublicLayout,
-  },
-  { name: 'login', component: Login, layout: PublicLayout },
-  {
-    name: 'admin',
-    component: AdminLayout,
-    onlyIf: { guard: userIsAdmin, redirect: '/login' },
-    nestedRoutes: [
-      { name: 'index', component: AdminIndex },
-      {
-        name: 'employees',
-        component: '',
-        nestedRoutes: [
-          { name: 'index', component: EmployeesIndex },
-          { name: 'show/:id', component: EmployeesShow },
-        ],
-      },
-    ],
-  },
-]
-
-export { routes }
-```
-
-Import the routes into your main component (probably App.svelte)
-
-```javascript
+```svelte
+<!-- App.svelte -->
 <script>
-  import { Router } from 'svelte-router-spa'
-  import { routes } from './routes'
+  import { Router } from 'svelte-router-spa';
+  import { routes } from './routes.js';
 </script>
 
 <Router {routes} />
 ```
 
-That's all
+```js
+// routes.js
+import Home from './views/Home.svelte';
+import About from './views/About.svelte';
 
-### Layouts and route info
-
-Every Route file will receive a currentRoute property with information about the current route, params, queries, etc.
-
-You can add any number of layouts nested inside Router. For instance assuming that I want two layouts one for public pages and the other for private admin pages I would create these two files:
-
-Filename: _public_layout.svelte_
-
-```javascript
-<script>
-  import { Route } from 'svelte-router-spa'
-  import TopHeader from './top_header.svelte'
-  export let currentRoute
-  const params = {}
-</script>
-
-<div class="app">
-  <TopHeader />
-  <section class="section">
-    <Route {currentRoute}  {params} />
-  </section>
-</div>
+export const routes = [
+  { name: '/', component: Home },
+  { name: 'about', component: About },
+];
 ```
 
-Filename: _admin_layout.svelte_
+That's it — both `/` and `/about` work, and you can use plain `<a href="/about">` to navigate.
 
-```javascript
-<script>
-  import { Route } from "svelte-router-spa";
+---
 
-  export let currentRoute;
-  const params = {}
-</script>
+## Realistic project example
 
-<div>
-  <h1>Admin Layout</h1>
-  <Route {currentRoute} {params} />
-</div>
-```
+The following example combines **prefix**, **localisation**, **nested routes**, **guards**, **redirects**, **named params**, and a **custom 404** — the combination that usually causes confusion when features stack.
 
-The route page will take care of rendering the appropriate component inside the layout. It will also pass a property called _currentRoute_ to the component with information about the route, nested and query params.
+### Route definitions
 
-**Tip:** You can have any number of layouts and you can nest them into each other as much as you want. Just remember to add a _Route_ component where the content should be rendered inside the layout.
-
-**Tip:** The _Route_ component will pass a property to the rendered component named _currentRoute_ with information about the current route, params, queries, etc.
-
-### Anatomy of a route
-
-Each route is an object that may have the following properties:
-
-```javascript
+```js
+// routes.js
+import PublicLayout from './layouts/PublicLayout.svelte';
+import AdminLayout from './layouts/AdminLayout.svelte';
+import Home from './views/Home.svelte';
+import Login from './views/Login.svelte';
+import AdminDashboard from './views/admin/Dashboard.svelte';
+import EmployeesIndex from './views/admin/EmployeesIndex.svelte';
+import EmployeesLayout from './views/admin/EmployeesLayout.svelte';
+import EmployeeShow from './views/admin/EmployeeShow.svelte';
+import EmployeeCalendar from './views/admin/EmployeeCalendar.svelte';
+import NotFound from './views/NotFound.svelte';
 
 function userIsAdmin() {
-  // return true or false
+  // Check your auth store / session — must return true or false synchronously
+  return !!localStorage.getItem('admin_token');
 }
 
-
-{
-  name: 'about-us',
-  component: About,
-  layout: PublicLayout,
-  redirectTo: 'company',
-  onlyIf: { guard: userIsAdmin, redirect: '/login' },
-  lang: { es: 'acerca-de' },
-  nestedRoutes: [
-    { name: 'our-values', component: CompanyValues, lang: { es: 'nuestros-valores' } }
-  ]
-}
-
-```
-
-**name (required)**: The name that will be used in the url. This is the default name for the route if no localisation is defined or no language is set.
-
-**component (required if no layout is present)**: A component that will be rendered when this route is active. If the route has nestedRoutes the component should be a Layout.
-
-**layout (required if no component is present)**: A component that acts as a layout (a container for other child components).
-
-_Either a component or a layout should be specified. Both can not be empty._
-
-**nestedRoutes**: An array of routes.
-
-**redirectTo**: A url or pathname (https://yourwebsite.com) or (/my-product).
-
-**onlyIf**: An object to conditionally render a route. If guard returns true then route is rendered. If guard is false it redirects to _redirect_.
-
-**lang**: An object with route names localised. Check [Localisation](#localisation)
-
-Routes can contain as many nested routes as needed.
-
-They can also contain as many layouts as needed. Layouts can be nested into other layouts.
-
-In the following example both the home root ('/' and 'login' will use the same layout). Admin, employees and employeesShow will use the admin layout and employees will also use the employees layout, rendered inside the admin layout.
-
-Example of routes:
-
-```javascript
-const routes = [
+export const routes = [
+  // ── Public routes ──────────────────────────────────────────
+  { name: '/', component: Home, layout: PublicLayout },
   {
-    name: '/',
-    component: PublicIndex,
+    name: 'login',
+    component: Login,
     layout: PublicLayout,
+    lang: { es: 'iniciar-sesion', de: 'anmelden' },
   },
-  { name: 'login', component: Login, layout: PublicLayout },
+
+  // ── Static redirect ────────────────────────────────────────
+  { name: 'home', redirectTo: '/' },
+
+  // ── Protected admin area ───────────────────────────────────
   {
     name: 'admin',
-    component: AdminIndex,
-    layout: AdminLayout,
+    component: AdminLayout,
+    lang: { es: 'administrador', de: 'verwaltung' },
+    onlyIf: { guard: userIsAdmin, redirect: '/login' },
     nestedRoutes: [
+      { name: 'index', component: AdminDashboard },
       {
         name: 'employees',
-        component: EmployeesIndex,
+        component: EmployeesLayout,
+        lang: { es: 'empleados', de: 'angestellte' },
         nestedRoutes: [
+          { name: 'index', component: EmployeesIndex },
           {
             name: 'show/:id',
-            component: EmployeesShowLayout,
-            nestedRoutes: [
-              { name: 'index', component: EmployeesShow },
-              { name: 'list', component: EmployeesShowList },
-            ],
+            component: EmployeeShow,
+            lang: { es: 'mostrar/:id' },
+          },
+          {
+            name: 'calendar/:month',
+            component: EmployeeCalendar,
+            lang: { es: 'calendario/:month', de: 'kalender/:month' },
           },
         ],
       },
     ],
   },
-]
+
+  // ── Custom 404 (must be at top level) ──────────────────────
+  { name: '404', path: '404', component: NotFound },
+];
 ```
 
-The routes that this file will parse successfully are:
+### App entry
 
-```
-/
-/login
-/admin
-/admin/employees
-/admin/employees/show
-/admin/employees/show/{id}
-/admin/employees/show/{id}/list
-```
-
-### Using named params as first part of path name (not recommended)
-
-Svelte Router is usually smart enough to find the right route for you. It means that you don't need to care about the order in which you write your routes. There is an exception to this rule: If you define a named param as the very first part of the path like: /:user-name/edit
-
-In this specific case order matters and you should add that route **after** all other routes.
-
-This is not recommended and you should always start your routes with a static path name. You can add as many named params as you need after the first static name.
-
-```javascript
-
-function userIsAdmin() {
-  // return true or false
-}
-
-
-{
-  name: 'about-us',
-  component: About,
-  lang: { es: 'acerca-de' },
-  nestedRoutes: [
-    {
-      name: 'our-values', component: CompanyValues, lang: { es: 'nuestros-valores' }
-    }
-  ]
-},
-{
-  name: '/',
-  component: HomeComponent
-},
-{
-  name: '/project/:name',
-  component: ProjectComponent
-},
-{
-  name: '/:user-name/edit',
-  component: EditUserComponent
-}
-
-```
-
-## API
-
-### Router
-
-`import { Router } from 'svelte-router-spa'`
-
-This is the main component that needs to be included before any other content as it holds information about your routes and which route should be rendered.
-
-The simplest approach (although not required) is to have an App.svelte file like this:
-
-```javascript
+```svelte
+<!-- App.svelte -->
 <script>
-  import { Router } from 'svelte-router-spa'
-  import { routes } from './routes'
+  import { Router } from 'svelte-router-spa';
+  import { routes } from './routes.js';
 
-  let options = { gaPageviews: true}
+  const options = {
+    prefix: 'company',       // All routes live under /company/*
+    lang: 'es',              // Match only Spanish translations
+    defaultLanguage: 'en',   // Fallback when a segment has no translation
+    gaPageviews: false,
+  };
 </script>
 
 <Router {routes} {options} />
 ```
 
-The layout and/or the component that matches the active route will be rendered inside _Router_.
+With `prefix: 'company'` the routes above are reachable at:
 
-Options is an object that supports three properties:
+```
+/company/                              → Home
+/company/iniciar-sesion                → Login (Spanish)
+/company/administrador                 → AdminDashboard (auto-index)
+/company/administrador/empleados       → EmployeesIndex (auto-index)
+/company/administrador/empleados/mostrar/42   → EmployeeShow  { id: '42' }
+/company/administrador/empleados/calendario/enero → EmployeeCalendar { month: 'enero' }
+```
 
-_gaPageviews_ that will record route changes as pageviews in Google Analytics. It's disabled by default.
+### Layout components
 
-_lang_ a string that sets the language that the router will use to match the active route. Check [Localisation](#localisation)
+Every layout **must** include a `<Route>` component where child content should render. The `currentRoute` prop is passed down automatically.
 
-_defaultLanguage_ If no language is set the active route will return this value as the active language.
-
-### Route
-
-`import { Route } from 'svelte-router-spa'`
-
-This component is only needed if you create a layout. It will take care of rendering the content for the child components or child layouts recursively. You can have as many nested layouts as you need.
-
-The info about the current route will be received as a property so you need to define _currentRoute_ and export it.
-
-It will also accept an object called named _params_ where you can send any aditional params to the rendered component. This is usefull if you add any logic in your template, to check user's permission for instance, and want to send extra info to the rendered component.
-
-currentRoute has all the information about the current route and the child routes.
-
-Route is smart enough to expose the named params in the route component where they will be rendered.
-
-Example:
-
-```javascript
+```svelte
+<!-- layouts/AdminLayout.svelte -->
 <script>
-  import { Route } from 'svelte-router-spa'
-  import TopHeader from './top_header.svelte'
-  import FooterContent from './footer_content.svelte'
-  export let currentRoute
+  import { Route, Navigate, routeIsActive } from 'svelte-router-spa';
 
-  const params = { validCheck: true }
+  export let currentRoute;
+  const params = {};
 </script>
 
-<div class="app">
-  <TopHeader />
-  <section class="section">
+<div class="admin-shell">
+  <nav>
+    <!-- <Navigate> adds class="active" automatically -->
+    <Navigate to="admin" styles="nav-link">Dashboard</Navigate>
+    <Navigate to="admin/employees" styles="nav-link">Employees</Navigate>
+
+    <!-- Plain <a> also works — the global click handler intercepts it -->
+    <a href="/company/login" class="nav-link">Logout</a>
+  </nav>
+
+  <main>
+    <!-- Renders the matched child component or recurses into the next layout -->
     <Route {currentRoute} {params} />
-    <p>Route params are: {currentRoute.namedParams} and {currentRoute.queryParams}</p>
-  </section>
-  <FooterContent />
+  </main>
+
+  <footer>
+    Language: {currentRoute.language}
+  </footer>
 </div>
 ```
 
-### currentRoute
+### Page components
 
-This object is propagated from _Route_ to the components it renders. It contains information about the current route and the child routes.
+Every page component receives `currentRoute` as a prop:
 
-These are the properties available in this object:
-
-- name
-- component
-- layout
-- queryParams
-- namedParams
-- childRoute
-- language
-
-**Example:**
-
-```javascript
-const routes = [
-  {
-    name: '/public',
-    component: PublicLayout,
-    nestedRoutes: [
-      {
-        name: 'about-us',
-        component: 'AboutUsLayout',
-        nestedRoutes: [
-          { name: 'company', component: CompanyPage },
-          { name: 'people', component: PeoplePage },
-        ],
-      },
-    ],
-  },
-]
-```
-
-That configuration will parse correctly the following routes:
-
-```javascript
-/public
-/public/about-us
-/public/about-us/company
-/public/about-us/people/:name
-```
-
-If the user visits /public/about-us/people/jack the following components will be rendered:
-
-```
-Router -> PublicLayout(Route) -> AboutUsLayout(Route) -> PeoplePage
-```
-
-Inside PeoplePage you can get all the information about the current route like this:
-
-```javascript
+```svelte
+<!-- views/admin/EmployeeShow.svelte -->
 <script>
-  export let currentRoute
+  export let currentRoute;
+
+  // Named params from the URL
+  const employeeId = currentRoute.namedParams.id;
+
+  // Query string values
+  const tab = currentRoute.queryParams.tab || 'profile';
+
+  // Hash (e.g. #cv)
+  const section = currentRoute.hash;
 </script>
 
-<h1>Your name is: {currentRoute.namedParams.name}</h1>
+<h1>Employee #{employeeId}</h1>
+<p>Active tab: {tab}</p>
+{#if section}
+  <p>Jumped to: {section}</p>
+{/if}
 ```
 
-This will render:
+---
+
+## How route resolution works (the pipeline)
+
+When any navigation event occurs (link click, `navigateTo()`, or browser back/forward), the router runs the following pipeline **in order**:
+
+```
+1. URL preprocessing
+   ├─ Strip trailing slash
+   ├─ Strip prefix (if options.prefix is set)
+   └─ Parse into segments via URL API
+
+2. Route matching (recursive, depth-first)
+   ├─ For each route at the current level:
+   │   ├─ Resolve i18n path (consider current language)
+   │   ├─ Compare static path first (exact match wins)
+   │   └─ Fall back to named-param match (:param) only if no static match
+   ├─ On match → evaluate redirect (redirectTo, then guard)
+   ├─ On match with nestedRoutes → recurse into children
+   └─ On match with nestedRoutes but no remaining segments → try auto-index
+
+3. Post-matching
+   ├─ No match or empty nested child? → 404 (custom or /404.html)
+   ├─ Strip query params from .path property
+   └─ Prepend prefix back to .path
+
+4. Side effects (setActiveRoute)
+   ├─ If redirectTo is set → call navigateTo(redirectTo) (new cycle)
+   ├─ Otherwise → pushState to browser history
+   └─ Update the activeRoute Svelte store
+```
+
+**Key takeaway:** The prefix is stripped _before_ matching and re-added _after_. Guards and redirects are evaluated _during_ matching, not after. 404 is only the final fallback.
+
+---
+
+## Navigation: `<a>` vs `<Navigate>` vs `navigateTo`
+
+### Plain `<a>` links (global click handler)
+
+The router registers a single `window.addEventListener('click', …)` that intercepts clicks on **any** `<a>` element when **all** of the following are true:
+
+1. The click target is an `<a>` element.
+2. No modifier key is held (meta / ctrl / shift — so "open in new tab" still works).
+3. The link is same-origin (same `host`).
+4. If a `prefix` is configured, the link's pathname starts with `/{prefix}`.
+
+When intercepted, `event.preventDefault()` is called and `navigateTo()` is invoked with the link's pathname + search + hash.
+
+Special case: if the `<a>` has `target="_blank"`, the URL is opened in a new window via `window.open()` instead.
 
 ```html
-<h1>Your name is: Jack</h1>
+<!-- These are ALL intercepted automatically -->
+<a href="/admin/employees">Employees</a>
+<a href="/admin/employees/show/42?tab=projects#cv">Show employee</a>
+
+<!-- These are NOT intercepted -->
+<a href="https://external.com/page">External</a>
+<a href="/admin" target="_blank">Open in new tab</a>
+<!-- Ctrl/Cmd+click also passes through -->
 ```
 
-### Navigate
+> **Gotcha:** Because the handler is attached to `window`, it fires for every `<a>` on the page — even those inside third-party widgets or dynamically inserted content. If a link's host matches but you do NOT want SPA navigation, add `target="_blank"` or use a different element.
 
-`import { Navigate } from 'svelte-router-spa'`
+### `<Navigate>` component
 
-#### params
+`<Navigate>` is a thin wrapper around `<a>` that adds two features on top of the global handler:
 
-- **to** (Required) String A valid route to navigate to.
-- **title** (Optional) String A title for the _a_ element.
-- **styles** (Optional) String Class styles to be applied to the _a class_ element.
-- **lang** (Optional) String A language to convert the route to.
+1. **Automatic `active` class** — adds `class="active"` when the target route matches the current route (uses `routeIsActive`).
+2. **i18n conversion** — if you pass `lang="es"`, the `to` prop is converted to the localised path on mount.
 
-Navigate is a wrapper around the < a href="" > element to help you generate links quick and easily.
-
-It adds an _active_ class to the styles if the generated route is the active one.
-
-Check **navigateTo** belown for more information about the language param.
-
-Example:
-
-```javascript
+```svelte
 <script>
-  import { Navigate } from 'svelte-router-spa'
+  import { Navigate } from 'svelte-router-spa';
 </script>
 
-<div class="app">
-  <h1>My content</h1>
-  <p>Now I want to generate a <Navigate to="admin/employees">link to /admin/employees</Navigate></p>
-</div>
+<!-- Renders <a href="admin/employees" class="nav-link active"> when active -->
+<Navigate to="admin/employees" styles="nav-link">
+  Employees
+</Navigate>
+
+<!-- Renders <a href="administrador/empleados"> (converted to Spanish) -->
+<Navigate to="admin/employees" lang="es" styles="nav-link">
+  Empleados
+</Navigate>
 ```
 
-### navigateTo
+Under the hood, `<Navigate>` calls `navigateTo(to)` on click (after `preventDefault` + `stopPropagation`), so the route goes through the full resolution pipeline including guards and redirects.
 
-`import { navigateTo } from 'svelte-router-spa'`
+### `navigateTo()` function
 
-#### params
+For programmatic navigation (form submissions, redirects in event handlers, etc.):
 
-- **route name** (Required) String A valid route to navigate to.
-- **language** (Optional) String A language to convert the route to.
+```js
+import { navigateTo } from 'svelte-router-spa';
 
-navigateTo allows you to programatically navigate to a route from inside your app updating the browser url and history.
+// Basic navigation
+navigateTo('admin/employees');
 
-navigateTo receives a route name as a param and an optional language and will try to navigate to that route.
+// With language conversion → navigates to /configuracion
+navigateTo('setup', 'es');
 
-When a language is provided _navigateTo_ will try to convert the _route name_ to the localised version of the route.
-
-```javascript
-  // Example route
-  {
-    name: '/setup',
-    component: 'SetupComponent',
-    lang: { es: 'configuracion' }
-  }
+// Without updating browser history (rare — used internally for popstate)
+navigateTo('/page', null, false);
 ```
 
-```javascript
-navigateTo('setup') // Will redirect to /setup
+`navigateTo` creates a fresh `SpaRouter` instance, runs the full pipeline (including guard and redirect evaluation), pushes a history entry, and updates the Svelte store.
 
-navigateTo('setup', 'es') // Will redirect to /configuracion
+### Comparison table
+
+| Feature | `<a href>` | `<Navigate>` | `navigateTo()` |
+|---|---|---|---|
+| Prevents full page reload | Yes (if same-origin + prefix match) | Yes | Yes |
+| Runs through guards/redirects | Yes | Yes | Yes |
+| Adds `active` class automatically | No | Yes | No |
+| i18n path conversion | No | Yes (`lang` prop) | Yes (2nd arg) |
+| Works without Svelte component | Yes (plain HTML) | No | Yes |
+| Preserves query string in URL | Yes (from href) | No (use plain `<a>` for query strings) | Yes (include in pathName) |
+| Preserves hash in URL | Yes (from href) | No (use plain `<a>` for hash) | Yes (include in pathName) |
+| Ctrl/Cmd+click opens new tab | Yes (native behavior) | Yes (native behavior) | N/A |
+
+---
+
+## Named params and query strings
+
+### Named params (`:param`)
+
+Define them in the route `name` with a leading colon. Each `:param` consumes exactly one URL segment:
+
+```js
+{ name: 'show/:id', component: EmployeeShow }
+{ name: 'show/:id/:full-name', component: EmployeeDetail }
+{ name: 'calendar/:month/:day', component: CalendarDay }
 ```
 
-### routeIsActive
+They are available in the component as `currentRoute.namedParams`:
 
-`import { routeIsActive } from 'svelte-router-spa'`
-
-Returns a boolean indicating if the path is the current active route.
-
-This is useful, for instance to set an _active_ class on a menu.
-
-#### Params
-
-- **pathName** (required): A string with the path that you want to check.
-- **includePath** (optional | default is _false_): A boolean indicating if pathName should match exactly the current route or if it should be included.
-
-The [Navigate](https://github.com/jorgegorka/svelte-router/blob/master/README.md#navigate) component does this automatically and adds an _active_ class if the generated route is the active one. Navigate sets _includePath_ to false
-
-Example:
-
-```javascript
+```svelte
 <script>
-  import { routeIsActive } from 'svelte-router-spa'
+  export let currentRoute;
 </script>
 
-<a href="/contact-us" class:active={routeIsActive('/contact-us')}>
-  Say hello
-</a>
-
-// If current route is /admin/companies/show/my-company
-
-routeIsActive('admin') // returns false
-routeIsActive('show/my-company') // returns false
-routeIsActive('admin/companies/show/my-company') // returns true
-routeIsActive('admin', true) // returns true
-routeIsActive('show/my-company', true) // returns true
-routeIsActive('my-company', true) // returns true
-routeIsActive('other-company', true) // returns false
+<p>ID: {currentRoute.namedParams.id}</p>
+<p>Name: {currentRoute.namedParams['full-name']}</p>
 ```
 
-If _includePath_ is true and the current route is `/admin/companies/show/my-company`
+### Query strings (`?key=value`)
 
-### localisedRoute
+Query strings are parsed by the native `URL` API and available as `currentRoute.queryParams`:
 
-`import { localisedRoute } from 'svelte-router-spa'`
-
-#### params
-
-- **route name** (Required) String A valid route to navigate to.
-- **language** (Required) String A language to convert the route to.
-
-localisedRoute returns a string with the route localised to the specified language.
-
-```javascript
-  // Example route
-  {
-    name: '/setup',
-    component: 'SetupComponent',
-    lang: { es: 'configuracion', it: 'configurazione' }
-  }
+```
+URL: /admin/employees/show/42?tab=projects&sort=name
 ```
 
-```javascript
-localisedRoute('setup', 'es') // Will return the string "/configuracion"
-
-localisedRoute('setup', 'it') // Will return the string "/configurazione"
+```js
+currentRoute.queryParams // { tab: 'projects', sort: 'name' }
 ```
 
-### Not Found - 404
+Query strings are preserved in the browser URL but stripped from `currentRoute.path` (which only contains the pathname).
 
-#### Default behaviour
+### Hash / anchors (`#section`)
 
-Svelte Router redirects to a 404.html page if a route is not found. Most hosting providers support this configuration and will serve a 404.html page automatically for not found pages. Just add a 404.html page in the same directory where your index.html file is.
+The hash fragment is available as `currentRoute.hash`:
 
-#### Custom behaviour
-
-If you define a 404 route it will be rendered instead of the default behaviour.
-
-```javascript
-  // Example of a custom 404 route
-  {
-    name: '404',
-    path: '404',
-    component: MyCustomNotFoundcomponent
-  }
 ```
+URL: /admin/employees/show/42#cv
+```
+
+```js
+currentRoute.hash // '#cv'
+```
+
+### How params accumulate in nested routes
+
+Named params are **accumulated** as the router recurses into nested routes. A deeply nested component receives params from all ancestor routes plus its own:
+
+```js
+// Route config
+{
+  name: 'admin',
+  nestedRoutes: [{
+    name: 'employees',
+    nestedRoutes: [
+      { name: 'show/:id', nestedRoutes: [
+        { name: 'calendar/:month', component: CalendarPage }
+      ]}
+    ]
+  }]
+}
+```
+
+```
+URL: /admin/employees/show/42/calendar/june
+```
+
+Inside `CalendarPage`:
+
+```js
+currentRoute.namedParams // { id: '42', month: 'june' }
+```
+
+Both `id` (from the parent route) and `month` (from the current route) are available.
+
+---
+
+## Route guards
+
+### Defining a guard
+
+A guard is a **synchronous function** that returns `true` (allow access) or `false` (redirect):
+
+```js
+function userIsAdmin() {
+  return !!localStorage.getItem('admin_token');
+}
+
+{
+  name: 'admin',
+  component: AdminLayout,
+  onlyIf: { guard: userIsAdmin, redirect: '/login' }
+}
+```
+
+- `guard` — the function to call. Must return `true` or `false`.
+- `redirect` — the path to navigate to when `guard()` returns `false`. Defaults to `'/'` if omitted.
+
+### Guard evaluation order
+
+Guards are evaluated **during route matching**, at the same level where the route is matched. The order is:
+
+1. The URL segment matches the route name (static or named-param).
+2. `RouterRedirect` is invoked for the matched route:
+   a. First, `route.redirectTo` is checked (static redirect).
+   b. Then, the guard is checked. **If the guard is valid and returns `false`, it overrides any static redirect.**
+3. If the guard passes, matching continues into `nestedRoutes`.
+
+**Important:** If a **parent** route's guard fails, the entire nested subtree is skipped — the router redirects immediately without evaluating child routes.
+
+### Guard + redirect interaction
+
+When a route has **both** `redirectTo` and `onlyIf`:
+
+```js
+{
+  name: 'legacy-admin',
+  redirectTo: '/admin',
+  onlyIf: { guard: userIsAdmin, redirect: '/login' }
+}
+```
+
+The resolution order inside `RouterRedirect` is:
+
+1. Start with no redirect.
+2. If `redirectTo` is set → use it (`/admin`).
+3. If guard is valid AND `guard()` returns `false` → **override** with `guard.redirectPath()` (`/login`).
+
+So: if the guard **passes** → the static redirect fires (`/admin`). If the guard **fails** → the guard redirect fires (`/login`).
+
+### Back-button behavior after a guard redirect
+
+When a guard redirects, the router calls `navigateTo(redirectPath)`, which:
+
+1. Creates a new `SpaRouter` instance for the redirect target URL.
+2. Runs the full resolution pipeline again (the redirect target may itself have guards).
+3. Calls `history.pushState()` for the redirect target.
+
+This means the **guarded URL is pushed to history first** (by the original navigation), and then the **redirect URL is pushed on top**. Pressing the browser's back button after a guard redirect will:
+
+1. Go back to the guarded URL.
+2. The guard will fire again and redirect forward.
+
+This creates a "back-button trap" if the guard keeps failing. The standard solution is to use `replaceState` in your guard's redirect target or to design the redirect target (e.g., `/login`) so that it replaces history. The router itself always uses `pushState`.
+
+> **Tip:** To avoid the trap, handle the post-login redirect programmatically: after the user logs in on the `/login` page, call `navigateTo('admin')` instead of relying on the browser back button.
+
+---
+
+## Redirects
+
+### Static redirect (`redirectTo`)
+
+Always redirects, unconditionally:
+
+```js
+{ name: 'old-page', redirectTo: '/new-page' }
+{ name: 'home', redirectTo: '/' }
+{ name: 'external', redirectTo: 'https://example.com' }
+```
+
+The route does not need a `component` or `layout` — it will never be rendered.
+
+### Guard-based redirect (`onlyIf`)
+
+Redirects only when the guard function returns `false`:
+
+```js
+{
+  name: 'admin',
+  component: AdminLayout,
+  onlyIf: { guard: userIsAdmin, redirect: '/login' }
+}
+```
+
+### Redirect priority
+
+When both are present on the same route:
+
+```
+guard redirect (highest priority — overrides static redirect when guard fails)
+  ↓
+static redirectTo (used when guard passes or no guard exists)
+  ↓
+no redirect → render the route normally
+```
+
+### Chained redirects
+
+If a redirect target itself has a redirect or a failing guard, the router handles it correctly. Each `navigateTo()` call creates a fresh `SpaRouter` instance that resolves the new URL independently:
+
+```js
+// Route A redirects to Route B
+// Route B has a guard that redirects to Route C
+// The router follows: A → B → C
+```
+
+There is no built-in loop detection. Make sure your redirect chains are acyclic.
+
+---
+
+## Not Found (404)
+
+### Default 404 behavior
+
+When no route matches and no custom 404 route is defined, the router returns:
+
+```js
+{ name: '404', component: '', path: '404', redirectTo: '/404.html' }
+```
+
+The `redirectTo: '/404.html'` causes `setActiveRoute` to set the browser's active route to `/404.html` (without calling `navigateTo`, to avoid an infinite redirect loop). Your hosting provider is expected to serve a `404.html` file for this path.
+
+### Custom 404 component
+
+Define a route with `name: '404'` at the **top level** of your routes array:
+
+```js
+{ name: '404', path: '404', component: MyCustomNotFoundComponent }
+```
+
+When no route matches, the router finds this route by name and renders its component like any other route. The `currentRoute` prop will contain `{ name: '404', path: '404', language: '...' }`.
+
+### When does 404 trigger?
+
+A route is considered "not found" when:
+
+1. `searchActiveRoutes` returns an empty object (no route matched at any level), **or**
+2. `anyEmptyNestedRoutes` returns `true` (recursively checks if any `childRoute` in the chain is empty — this happens when a parent matches but no child matches the remaining path segments).
+
+**Example:** With the route config from the realistic example above:
+
+```
+/company/nonexistent          → 404 (no top-level match)
+/company/admin/employees/junk → 404 (parent matches but no child matches "junk")
+/company/admin                → AdminDashboard (auto-index, NOT 404)
+```
+
+---
 
 ## Route prefix
 
-You can easily constrain all your routes to a specific path like _/blog_
-
-```javascript
-<Router { routes } options={ {prefix: 'blog'} } />
+```svelte
+<Router {routes} options={{ prefix: 'blog' }} />
 ```
 
-With this option you don't have to define all your routes starting with _blog_ they will be prefixed automatically.
+With a prefix, all your routes live under `/{prefix}/*` without needing to include the prefix in your route definitions.
 
-Using prefix has two advantages:
+### How prefix changes URL parsing
 
-- You don't need to create a top level route in your routes file and then add every route as a nested route.
-- Routes that don't start with the prefix will not be returned as 404 since they are out of the scope of the prefixed routes so you can navigate to them.
+1. **Before matching:** The prefix is stripped from the URL. So `/blog/about-us` becomes `/about-us` internally.
+2. **During matching:** Routes are matched as if the prefix doesn't exist.
+3. **After matching:** The prefix is prepended back to `currentRoute.path`.
+
+Your route definitions do **not** include the prefix:
+
+```js
+// With prefix: 'blog', these routes match /blog/ and /blog/about
+const routes = [
+  { name: '/', component: BlogIndex },
+  { name: 'about', component: BlogAbout },
+];
+```
+
+### Prefix and link interception
+
+The global click handler only intercepts `<a>` links whose pathname starts with `/{prefix}`. Links to paths outside the prefix scope are left alone, allowing normal (non-SPA) navigation:
+
+```html
+<!-- With prefix: 'blog' -->
+<a href="/blog/about">Intercepted → SPA navigation</a>
+<a href="/dashboard">NOT intercepted → normal navigation to /dashboard</a>
+```
+
+This is useful when the SPA is embedded in a larger site — only links within the SPA's scope are handled by the router.
+
+---
+
+## Localisation (i18n)
+
+Routes can define translated path segments via the `lang` property:
+
+```js
+{
+  name: 'employees',
+  component: EmployeesIndex,
+  lang: { es: 'empleados', de: 'angestellte' }
+}
+```
+
+How the router uses translations depends on the `lang` option passed to `<Router>`:
+
+### Mode A — no `lang` option (match any language)
+
+When no language is set in options, the router accepts **all** language variants plus the default name:
+
+```
+/admin/employees              → matches (default name)
+/administrador/empleados      → matches (all Spanish)
+/admin/empleados              → matches (mixed: default + Spanish)
+```
+
+`currentRoute.language` reflects whichever language the **last matched segment** used. If the default name matched, `language` is `undefined` (or `defaultLanguage` if that option is set).
+
+### Mode B — `lang` option set (match only that language)
+
+When `options.lang = 'es'`, only the Spanish translations are accepted. Default names become **invalid** for segments that have a Spanish translation:
+
+```
+/login                        → 404 (has lang.es = 'iniciar-sesion')
+/iniciar-sesion               → matches
+/admin/employees              → 404 (both have Spanish translations)
+/administrador/empleados      → matches
+```
+
+For segments that have **no** translation in the active language, the default name is still used as a fallback.
+
+### Mode C — language conversion via `navigateTo` / `<Navigate>`
+
+When you pass a language to `navigateTo` or the `<Navigate>` component, the router matches the default-name route but **converts** the output path to the localised version:
+
+```js
+navigateTo('admin/employees', 'es');
+// → navigates to /administrador/empleados
+```
+
+```svelte
+<Navigate to="admin/employees" lang="es">Empleados</Navigate>
+<!-- Renders <a href="administrador/empleados"> -->
+```
+
+### Partial localisation
+
+If only some segments have translations, the untranslated ones use the default name:
+
+```js
+// calendar has de: 'kalender', but admin has no German translation
+// URL: /admin/employees/show/123/kalender/april → valid
+// currentRoute.language === 'de' (from the last translated segment)
+```
+
+### `defaultLanguage` option
+
+When set, `currentRoute.language` returns this value instead of `undefined` when no specific language matched:
+
+```svelte
+<Router {routes} options={{ defaultLanguage: 'en' }} />
+```
+
+```js
+// Navigating to /admin/employees (default names)
+currentRoute.language // 'en' (instead of undefined)
+```
+
+---
+
+## Nested routes and layouts
+
+Nested routes are matched recursively. When the URL has more segments than the current level, the router recurses into `nestedRoutes`:
+
+```
+URL: /admin/employees/show/42
+
+Level 1: 'admin' matches → has nestedRoutes, segments remain → recurse
+Level 2: 'employees' matches → has nestedRoutes, segments remain → recurse
+Level 3: 'show/:id' matches → id = '42', no more segments → done
+```
+
+### Rendering priority inside `<Route>`
+
+The `<Route>` component renders in this priority order:
+
+```
+1. layout  → render layout component, pass currentRoute (with layout stripped)
+2. component → render component, pass currentRoute (with component stripped)
+3. childRoute → recurse with <svelte:self> into the child route
+```
+
+When a **layout** is rendered, it receives the `currentRoute` object which still contains `childRoute`. The layout is expected to embed a `<Route {currentRoute} />` to continue the rendering chain.
+
+When a **component** is rendered, it receives `currentRoute` with the `component` property stripped (to prevent infinite recursion if the component accidentally includes `<Route>`).
+
+### Auto-index behavior
+
+If a route has `nestedRoutes` but the URL has no more segments, the router automatically tries to match a child route with name `'index'`:
+
+```js
+{
+  name: 'admin',
+  component: AdminLayout,
+  nestedRoutes: [
+    { name: 'index', component: AdminDashboard },
+    { name: 'settings', component: AdminSettings },
+  ]
+}
+```
+
+```
+/admin → matches 'admin', no more segments → auto-tries ['index'] → renders AdminDashboard
+```
+
+---
+
+## TypeScript reference
+
+Type declarations are included in the `types/` directory and referenced via the `types` field in `package.json`.
+
+### `Route` (route definition)
+
+```ts
+import type { Route } from 'svelte-router-spa/types/components/router';
+
+type Route = {
+  name: string;                                    // URL path segment (required)
+  component?: typeof SvelteComponent;              // Page component to render
+  layout?: typeof SvelteComponent;                 // Layout wrapper component
+  nestedRoutes?: Route[];                          // Child routes
+  redirectTo?: string;                             // Static redirect target
+  onlyIf?: {                                       // Guard configuration
+    guard: (...args: any) => boolean | Promise<boolean>;
+    redirect: string;                              // Path to redirect to on guard failure
+  };
+  lang?: Record<string, string> | string;          // i18n translations { es: '...', de: '...' }
+};
+```
+
+### `RouterOptions`
+
+```ts
+import type { RouterOptions } from 'svelte-router-spa/types/components/router';
+
+type RouterOptions = Partial<{
+  prefix: string;           // Scope all routes under this path
+  gaPageviews: boolean;     // Track route changes as GA pageviews
+  lang: Language;           // Match only this language's translations
+  defaultLanguage: string;  // Fallback value for currentRoute.language
+}>;
+```
+
+### `CurrentRoute` (runtime route object)
+
+This is the object passed as `currentRoute` prop to every layout and component:
+
+```ts
+import type { CurrentRoute } from 'svelte-router-spa/types/components/route';
+
+type CurrentRoute = {
+  name: string;                              // Resolved path name
+  path: string;                              // Full path (without query params)
+  hash: string;                              // URL hash fragment (e.g. '#cv')
+  component?: typeof SvelteComponent;        // Matched component (stripped after render)
+  layout?: typeof SvelteComponent;           // Matched layout (stripped after render)
+  queryParams: Record<string, string>;       // Parsed query string
+  namedParams: Record<string, string>;       // Accumulated named params from all ancestors
+  childRoute: CurrentRoute;                  // Next level's route info (recursive)
+  language?: string;                         // Language of the last matched segment
+};
+```
+
+### `NavigateProps`
+
+```ts
+import type { NavigateProps } from 'svelte-router-spa/types/components/navigate';
+
+interface NavigateProps {
+  to: string;       // Target route path (required)
+  title?: string;   // HTML title attribute for the <a> element
+  styles?: string;  // CSS class names to apply to the <a> element
+  lang?: string;    // Language to convert the path to (i18n)
+}
+```
+
+### Function signatures
+
+```ts
+// Navigate programmatically
+function navigateTo(
+  pathName: string,
+  language?: string,
+  updateBrowserHistory?: boolean  // default: true
+): void;
+
+// Check if a path is the current active route
+function routeIsActive(
+  queryPath: string,
+  includePath?: boolean  // default: false (exact match); true = substring match
+): boolean;
+
+// Get the localised version of a route without navigating
+function localisedRoute(
+  pathName: string,
+  language: string
+): { redirectTo: string };  // Returns the route object with the converted path
+
+// Low-level router engine (used internally; rarely needed directly)
+function SpaRouter(
+  routes: Route[],
+  currentUrl: string | undefined,
+  options?: {}
+): Readonly<{
+  setActiveRoute: (updateBrowserHistory?: boolean) => any;
+  findActiveRoute: () => { redirectTo: string };
+}>;
+```
+
+### `activeRoute` Svelte store
+
+The router exposes a Svelte writable store that updates on every navigation:
+
+```ts
+import { activeRoute } from 'svelte-router-spa/src/store';
+
+// In a component:
+$: console.log($activeRoute);  // Reactively logs the current route object
+
+// Methods:
+activeRoute.subscribe(callback)  // Svelte store subscribe
+activeRoute.set(route)           // Set the active route (used internally)
+activeRoute.remove()             // Reset to empty object
+```
+
+---
+
+## API quick reference
+
+| Export | Type | Import | Purpose |
+|---|---|---|---|
+| `Router` | Component | `import { Router } from 'svelte-router-spa'` | Top-level router; takes `routes` and `options` props |
+| `Route` | Component | `import { Route } from 'svelte-router-spa'` | Renders matched component/layout inside layouts |
+| `Navigate` | Component | `import { Navigate } from 'svelte-router-spa'` | Link with auto `active` class and i18n conversion |
+| `navigateTo` | Function | `import { navigateTo } from 'svelte-router-spa'` | Programmatic navigation |
+| `routeIsActive` | Function | `import { routeIsActive } from 'svelte-router-spa'` | Check if a path is the current route |
+| `localisedRoute` | Function | `import { localisedRoute } from 'svelte-router-spa'` | Get i18n version of a route path |
+| `SpaRouter` | Function | `import { SpaRouter } from 'svelte-router-spa'` | Low-level router engine (rarely needed) |
+
+---
 
 ## Google Analytics
 
-If you want to track route changes as pageviews in Google Analytics just add
+Track route changes as pageviews:
 
-```javascript
-<Router { routes } options={ {gaPageviews: true} } />
+```svelte
+<Router {routes} options={{ gaPageviews: true }} />
 ```
 
-## Localisation
+This calls `ga('set', 'page', path)` and `ga('send', 'pageview')` on every navigation (including redirects).
 
-How localisation works depends on the _lang_ param being passed to the _Router_ component. If a language is specified the router will try to match a route in that language only. If no language is specified then the router will try to find a route in any language available.
-
-```javascript
-  const options = { lang: 'de' }
-
-  <Router {routes} {options} />
-```
-
-Let's see some examples using the following routes.
-
-```javascript
-const routes = [
-  {
-    name: '/',
-    component: PublicIndex,
-  },
-  { name: 'login', component: Login, lang: { es: 'iniciar-sesion' } },
-  { name: 'signup', component: SignUp, lang: { es: 'registrarse' } },
-  {
-    name: 'admin',
-    component: AdminIndex,
-    lang: { es: 'administrador' },
-    nestedRoutes: [
-      {
-        name: 'employees',
-        component: EmployeesIndex,
-        lang: { es: 'empleados' },
-        nestedRoutes: [
-          {
-            name: 'show/:id',
-            component: ShowEmployeeLayout,
-            lang: { es: 'mostrar/:id' },
-            nestedRoutes: [
-              {
-                name: 'index',
-                component: ShowEmployee,
-              },
-              {
-                name: 'calendar/:month',
-                component: CalendarEmployee,
-                lang: { es: 'calendario/:month', de: 'kalender/:month' },
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-]
-```
-
-If we don't specify a language the following routes are valid:
-
-`/login`
-
-`/setup`
-
-`/admin/employees`
-
-`/admin/employees/show/123`
-
-`/admin/employees/show/123/calendar/june`
-
-`/iniciar-sesion`
-
-`/registrarse`
-
-`/administrador/empleados`
-
-`/administrador/empleados/mostrar/123`
-
-`/administrador/empleados/mostrar/123/calendario/junio`
-
-If we specify a language the router will try to find routes **only** in that language so if in our current example we set the _lang_ variable to _'es'_ these routes will be **invalid** and the router will return a 404 page:
-
-`/login`
-
-`/setup`
-
-`/admin/employees`
-
-`/admin/employees/show/123`
-
-`/admin/employees/show/123/calendar/june`
-
-However these other routes will be **valid**:
-
-`/iniciar-sesion`
-
-`/registrarse`
-
-`/administrador/empleados`
-
-`/administrador/empleados/mostrar/123`
-
-`/administrador/empleados/mostrar/123/calendario/junio`
-
-_currentRoute_ will return the language of the matched route.
-
-Another example: In the routes above there is only one german localised route for _calendar_ so this url will be valid:
-
-`/admin/employees/show/123/kalender/april`
-
-The router will match the default route for all paths that are not localised and will match the german one for the one that specfies a localisation.
-
-That route will set **'de'** as the language in _currentRoute_
-
-### Rendering a page in different languages
-
-If you use _Navigate_ and _navigateTo_ to generate links and navigate to different parts of your application an automatic language conversion will be done for you.
-
-Both _Navigate_ and _navigateTo_ support an aditional parameter with a language. If a language is provided they will try to convert the default route into the corresponding one for that language.
-
-Example:
-
-```javascript
-  // Example route
-  {
-    name: '/setup',
-    component: 'SetupComponent',
-    lang: { es: 'configuracion' }
-  }
-```
-
-```javascript
-navigateTo('setup') // Will redirect to /setup
-
-navigateTo('setup', 'es') // Will redirect to /configuracion
-```
-
-There is also available a function called _localisedRoute_ that will return a string with the translated route, in case you want the translation but not navigating to the route.
-
-The router options accept a property called _defaultLanguage_ This value will be returned by the activeRoute object if there is no language selected.
-
-### Example of use
-
-[Demanda](https://github.com/jorgegorka/demanda) is an open source e-commerce application made with Ruby on Rails for the backend and Svelte for the frontend.  It is a [very good example](https://github.com/jorgegorka/demanda/tree/master/frontend/src/lib/routes) of how to use Svelte Router SPA.
+---
 
 ## Credits
 
